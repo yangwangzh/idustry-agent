@@ -23,6 +23,7 @@ from wuyue.backend import Backend
 
 # 导入Tavily组件
 from ..graph import Graph
+from ..utils.smart_factor_extractor import SmartFactorExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,9 @@ class QuantumParallelProcessor:
 
         # 知识库设置
         self._setup_knowledge_base()
+        
+        # 智能因子提取器
+        self.factor_extractor = SmartFactorExtractor()
 
         logger.info(f"🔬 量子并行处理器初始化完成: {self.total_qubits}量子比特, {n_layers}层, {shots}次测量")
 
@@ -263,44 +267,8 @@ class QuantumParallelProcessor:
         return quantum_analysis
 
     def _extract_factors_from_tavily_data(self, tavily_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """从Tavily数据中提取因子信息，转换为single_agent格式"""
-        factors = []
-
-        # 从报告长度提取信息丰富度因子
-        report_length = len(tavily_data.get('report', ''))
-        factors.append({
-            "name": "信息丰富度",
-            "value": min(report_length / 1000.0, 10.0),  # 标准化到0-10
-            "weight": 0.2
-        })
-
-        # 从数据源数量提取可信度因子
-        references_count = len(tavily_data.get('references', []))
-        factors.append({
-            "name": "数据源可信度",
-            "value": min(references_count / 2.0, 10.0),  # 标准化到0-10
-            "weight": 0.25
-        })
-
-        # 从财务数据提取财务健康度因子
-        financial_data = tavily_data.get('financial_data', {})
-        financial_score = len(str(financial_data)) / 100.0  # 简单的财务数据丰富度
-        factors.append({
-            "name": "财务健康度",
-            "value": min(financial_score, 10.0),
-            "weight": 0.3
-        })
-
-        # 从新闻数据提取市场活跃度因子
-        news_data = tavily_data.get('news_data', {})
-        news_activity = len(str(news_data)) / 100.0
-        factors.append({
-            "name": "市场活跃度",
-            "value": min(news_activity, 10.0),
-            "weight": 0.25
-        })
-
-        return factors
+        """从Tavily数据中智能提取因子信息 - 使用智能因子提取器"""
+        return self.factor_extractor.extract_factors_from_tavily_data(tavily_data)
 
     def _encode_all_companies_to_single_circuit(self, companies_data: List[Dict[str, Any]]) -> QuantumCircuit:
         """
@@ -348,30 +316,8 @@ class QuantumParallelProcessor:
             self._apply_controlled_rotation(qc, qreg, control_qubits, target_qubit, feature_value)
 
     def _extract_features_from_factors(self, factors: List[Dict[str, Any]]) -> List[float]:
-        """
-        从因子数据中提取特征向量 - 基于single_agent的方法
-        """
-        features = []
-
-        # 提取主要特征
-        for factor in factors:
-            value = factor.get('value', 0.0)
-            weight = factor.get('weight', 0.0)
-
-            # 特征工程：结合值和权重
-            weighted_value = value * weight
-            features.append(weighted_value)
-
-        # 填充到固定长度
-        while len(features) < self.feature_qubits:
-            features.append(0.0)
-
-        # 标准化到 [0, 2π] 范围（适合角度编码）
-        features = np.array(features[:self.feature_qubits])
-        if np.max(np.abs(features)) > 0:
-            features = (features - np.min(features)) / (np.max(features) - np.min(features)) * 2 * np.pi
-
-        return features.tolist()
+        """从因子数据中提取特征向量 - 使用智能因子提取器"""
+        return self.factor_extractor.extract_features_from_factors(factors)
 
     def _get_control_qubits_for_company(self, company_idx: int) -> List[int]:
         """
